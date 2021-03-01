@@ -1,4 +1,5 @@
 import {
+  LifecycleFlags,
   SubscriberFlags as SF,
 } from '../observation.js';
 import { def, defineHiddenProp, ensureProto } from '../utilities-objects.js';
@@ -137,6 +138,8 @@ export class SubscriberRecord<T extends IAnySubscriber> implements ISubscriberRe
     return false;
   }
 
+  private queue: Map<ISubscriber, [unknown, unknown, LifecycleFlags]> = new Map();
+  private notifying: boolean = false;
   public notify(val: unknown, oldVal: unknown, flags: LF): void {
     /**
      * Note: change handlers may have the side-effect of adding/removing subscribers to this collection during this
@@ -145,6 +148,7 @@ export class SubscriberRecord<T extends IAnySubscriber> implements ISubscriberRe
      * Subscribers removed during this invocation will still be invoked (and they also shouldn't be,
      * however this is accounted for via $isBound and similar flags on the subscriber objects)
      */
+    const queue = this.queue;
     const sub0 = this._s0 as ISubscriber;
     const sub1 = this._s1 as ISubscriber;
     const sub2 = this._s2 as ISubscriber;
@@ -153,26 +157,52 @@ export class SubscriberRecord<T extends IAnySubscriber> implements ISubscriberRe
       subs = subs.slice();
     }
 
+    const values = [val, oldVal, flags] as [unknown, unknown, LifecycleFlags];
     if (sub0 !== void 0) {
-      sub0.handleChange(val, oldVal, flags);
+      queue.set(sub0, values);
     }
     if (sub1 !== void 0) {
-      sub1.handleChange(val, oldVal, flags);
+      queue.set(sub1, values);
     }
     if (sub2 !== void 0) {
-      sub2.handleChange(val, oldVal, flags);
+      queue.set(sub2, values);
     }
     if (subs !== void 0) {
-      const ii = subs.length;
-      let sub: ISubscriber | undefined;
-      let i = 0;
-      for (; i < ii; ++i) {
-        sub = subs[i];
-        if (sub !== void 0) {
-          sub.handleChange(val, oldVal, flags);
-        }
-      }
+      subs.forEach(sub => {
+        queue.set(sub, values);
+      });
     }
+    if (this.notifying) {
+      return;
+      // this.notifying = true;
+    }
+    this.notifying = true;
+    queue.forEach((vals, sub) => {
+      queue.delete(sub);
+      sub.handleChange(...vals);
+    });
+    this.notifying = false;
+
+    // if (sub0 !== void 0) {
+    //   sub0.handleChange(val, oldVal, flags);
+    // }
+    // if (sub1 !== void 0) {
+    //   sub1.handleChange(val, oldVal, flags);
+    // }
+    // if (sub2 !== void 0) {
+    //   sub2.handleChange(val, oldVal, flags);
+    // }
+    // if (subs !== void 0) {
+    //   const ii = subs.length;
+    //   let sub: ISubscriber | undefined;
+    //   let i = 0;
+    //   for (; i < ii; ++i) {
+    //     sub = subs[i];
+    //     if (sub !== void 0) {
+    //       sub.handleChange(val, oldVal, flags);
+    //     }
+    //   }
+    // }
   }
 
   public notifyCollection(indexMap: IndexMap, flags: LF): void {
