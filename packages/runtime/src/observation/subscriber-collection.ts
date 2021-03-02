@@ -138,7 +138,7 @@ export class SubscriberRecord<T extends IAnySubscriber> implements ISubscriberRe
     return false;
   }
 
-  private queue: Map<ISubscriber, [unknown, unknown, LifecycleFlags]> = new Map();
+  private readonly queue: Map<ISubscriber, ChangeRecord> = new Map();
   private notifying: boolean = false;
   public notify(val: unknown, oldVal: unknown, flags: LF): void {
     /**
@@ -149,6 +149,7 @@ export class SubscriberRecord<T extends IAnySubscriber> implements ISubscriberRe
      * however this is accounted for via $isBound and similar flags on the subscriber objects)
      */
     const queue = this.queue;
+    const record = new ChangeRecord(val, oldVal, flags);
     const sub0 = this._s0 as ISubscriber;
     const sub1 = this._s1 as ISubscriber;
     const sub2 = this._s2 as ISubscriber;
@@ -157,52 +158,32 @@ export class SubscriberRecord<T extends IAnySubscriber> implements ISubscriberRe
       subs = subs.slice();
     }
 
-    const values = [val, oldVal, flags] as [unknown, unknown, LifecycleFlags];
     if (sub0 !== void 0) {
-      queue.set(sub0, values);
+      queue.set(sub0, record);
     }
     if (sub1 !== void 0) {
-      queue.set(sub1, values);
+      queue.set(sub1, record);
     }
     if (sub2 !== void 0) {
-      queue.set(sub2, values);
+      queue.set(sub2, record);
     }
     if (subs !== void 0) {
-      subs.forEach(sub => {
-        queue.set(sub, values);
-      });
+      const ii = subs.length;
+      let sub: ISubscriber | undefined;
+      let i = 0;
+      for (; i < ii; ++i) {
+        sub = subs[i];
+        if (sub !== void 0) {
+          queue.set(sub, record);
+        }
+      }
     }
     if (this.notifying) {
       return;
-      // this.notifying = true;
     }
     this.notifying = true;
-    queue.forEach((vals, sub) => {
-      queue.delete(sub);
-      sub.handleChange(...vals);
-    });
+    queue.forEach(callSubscriber);
     this.notifying = false;
-
-    // if (sub0 !== void 0) {
-    //   sub0.handleChange(val, oldVal, flags);
-    // }
-    // if (sub1 !== void 0) {
-    //   sub1.handleChange(val, oldVal, flags);
-    // }
-    // if (sub2 !== void 0) {
-    //   sub2.handleChange(val, oldVal, flags);
-    // }
-    // if (subs !== void 0) {
-    //   const ii = subs.length;
-    //   let sub: ISubscriber | undefined;
-    //   let i = 0;
-    //   for (; i < ii; ++i) {
-    //     sub = subs[i];
-    //     if (sub !== void 0) {
-    //       sub.handleChange(val, oldVal, flags);
-    //     }
-    //   }
-    // }
   }
 
   public notifyCollection(indexMap: IndexMap, flags: LF): void {
@@ -249,4 +230,17 @@ function addSubscriber(this: ISubscriberCollection, subscriber: IAnySubscriber):
 
 function removeSubscriber(this: ISubscriberCollection, subscriber: IAnySubscriber): boolean {
   return this.subs.remove(subscriber as ISubscriber & ICollectionSubscriber);
+}
+
+function callSubscriber(record: ChangeRecord, sub: ISubscriber, map: Map<ISubscriber, ChangeRecord>) {
+  map.delete(sub);
+  sub.handleChange(record.v, record.v2, record.f);
+}
+
+class ChangeRecord {
+  public constructor(
+    public readonly v: unknown,
+    public readonly v2: unknown,
+    public readonly f: LifecycleFlags,
+  ) {}
 }
