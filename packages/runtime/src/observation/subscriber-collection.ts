@@ -138,8 +138,8 @@ export class SubscriberRecord<T extends IAnySubscriber> implements ISubscriberRe
     return false;
   }
 
-  private readonly queue: Map<ISubscriber, ChangeRecord> = new Map();
-  private notifying: boolean = false;
+  private readonly queue: Map<ISubscriber, ChangeRecord>  = new Map();
+  private depth: number = 0;
   public notify(val: unknown, oldVal: unknown, flags: LF): void {
     /**
      * Note: change handlers may have the side-effect of adding/removing subscribers to this collection during this
@@ -148,12 +148,16 @@ export class SubscriberRecord<T extends IAnySubscriber> implements ISubscriberRe
      * Subscribers removed during this invocation will still be invoked (and they also shouldn't be,
      * however this is accounted for via $isBound and similar flags on the subscriber objects)
      */
+    if (this.count === 0) {
+      return;
+    }
     const queue = this.queue;
     const record = new ChangeRecord(val, oldVal, flags);
     const sub0 = this._s0 as ISubscriber;
     const sub1 = this._s1 as ISubscriber;
     const sub2 = this._s2 as ISubscriber;
     let subs = this._sr as ISubscriber[];
+
     if (subs !== void 0) {
       subs = subs.slice();
     }
@@ -178,12 +182,14 @@ export class SubscriberRecord<T extends IAnySubscriber> implements ISubscriberRe
         }
       }
     }
-    if (this.notifying) {
+    if (this.depth++ > 0) {
+      if (this.depth > 10) {
+        throw new Error('Recursive changes notification');
+      }
       return;
     }
-    this.notifying = true;
     queue.forEach(callSubscriber);
-    this.notifying = false;
+    this.depth = 0;
   }
 
   public notifyCollection(indexMap: IndexMap, flags: LF): void {
